@@ -98,3 +98,8 @@ ssl_key_password=test1234
 # but for all the portal home page link, we need to use this props. If do not set this, it will use api_hostname value instead.
 # api_portal_hostname=http://127.0.0.1:8080
 # --------------------------------------------
+
+# We can support the custom folder for the home page, all the html, css, js can be modified independently. 
+# It is under this folder:OBP-API/obp-api/src/main/resources/custom_webapp
+# Default value is false. If we set it to true, obp-api will overwrite the OBP-API/obp-api/src/main/webapp folder. 
+# use_custom_webapp=false
