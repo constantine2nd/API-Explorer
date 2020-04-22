@@ -198,6 +198,21 @@ class Boot extends MdcLoggable{
 
     //If use_custom_webapp=true, this will copy all the files from `OBP-API/obp-api/src/main/webapp` to `OBP-API/obp-api/src/main/resources/custom_webapp`
     if (Helper.getPropsAsBoolValue("use_custom_webapp", false)){
+      
+      def backupWebappFolder(dir: File) = {
+        // inserts correct file path separator on *nix and Windows
+        // works on *nix
+        // works on Windows
+        val backupPath: java.nio.file.Path = java.nio.file.Paths.get(dir.getParent(), "webapp_initial")
+        val directoryExists = java.nio.file.Files.exists(backupPath)
+        if(!directoryExists) {
+          import java.nio.file.Files
+          Files.createDirectories(backupPath)
+          val backUpDir = new File(backupPath.toUri.getPath)
+          FileUtils.copyDirectory(dir, backUpDir)
+        }
+      }
+      
       //this `LiftRules.getResource` will get the path of `OBP-API/obp-api/src/main/webapp`: 
       LiftRules.getResource("/").map { url =>
         // this following will get the path of `OBP-API/obp-api/src/main/resources/custom_webapp`
@@ -212,6 +227,8 @@ class Boot extends MdcLoggable{
         // directory process.
         val destDir = new File(url.getPath)
 
+        backupWebappFolder(destDir)
+
         // Copy source directory into destination directory
         // including its child directories and files. When
         // the destination directory is not exists it will
@@ -219,7 +236,17 @@ class Boot extends MdcLoggable{
         // date information of the file.
         FileUtils.copyDirectory(srcDir, destDir)
       }
+    } else {
+      //this `LiftRules.getResource` will get the path of `OBP-API/obp-api/src/main/webapp`: 
+      LiftRules.getResource("/").map { url =>
+        val destDir = new File(url.getPath)
+        val backupPath: java.nio.file.Path = java.nio.file.Paths.get(destDir.getParent(), "webapp_initial")
+        val directoryExists = java.nio.file.Files.exists(backupPath)
+        if(directoryExists) { // Revert initial state
+          val backUpDir = new File(backupPath.toUri.getPath)
+          FileUtils.copyDirectory(backUpDir, destDir)
+        }
+      }
     }
-
   }
 }
