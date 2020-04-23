@@ -102,4 +102,5 @@ ssl_key_password=test1234
 # We can support the custom folder for the home page, all the html, css, js can be modified independently. 
 # It is under this folder:OBP-API/obp-api/src/main/resources/custom_webapp
 # Default value is false. If we set it to true, obp-api will overwrite the OBP-API/obp-api/src/main/webapp folder. 
+# If we set it to false, obp-api will revert the OBP-API/obp-api/src/main/webapp folder in accordance to git state. 
 # use_custom_webapp=false
