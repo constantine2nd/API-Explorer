@@ -8,7 +8,7 @@ import java.util
 import code.util.Helper.MdcLoggable
 import com.nimbusds.jose.crypto.RSASSAVerifier
 import com.nimbusds.jose.jwk.JWK
-import com.nimbusds.jose.util.JSONObjectUtils
+import com.nimbusds.jose.util.{Base64, JSONObjectUtils}
 import com.nimbusds.jose.{JWSAlgorithm, JWSHeader, JWSObject, Payload}
 import net.liftweb.common.{Box, Failure, Full}
 import net.liftweb.http.provider.HTTPParam
@@ -119,26 +119,24 @@ object JwsUtil extends MdcLoggable {
    * @param forwardResult Propagated result of calling function
    * @return Propagated result of calling function or signing request error
    */
-  def verifySignedRequest(body: Box[String], verb: String, url: String, reqHeaders: List[HTTPParam], forwardResult: (Box[User], Option[CallContext])) = {
+  def verifySignedRequest(body: Box[String], verb: String, url: String, reqHeaders: List[HTTPParam], pem: Option[String]): Box[Boolean] = {
     if(forceVerifyRequestSignResponse(url)){
-      checkRequestIsSigned(forwardResult._2.map(_.requestHeaders).getOrElse(Nil)) match {
-        case false => 
-          (Failure(X509.X509RequestIsNotSigned), forwardResult._2)
-        case true =>
-          val pem: String = getPem(forwardResult._2.map(_.requestHeaders).getOrElse(Nil))
+      pem match {
+        case None => 
+          Failure(X509.X509RequestIsNotSigned)
+        case Some(pem) =>
           X509.validate(pem) match {
             case Full(true) => // PEM certificate is ok
               val jwkPublic: JWK = X509.pemToRsaJwk(pem)
               val isVerified = JwsUtil.verifyJws(jwkPublic.toRSAKey.toRSAPublicKey, body.getOrElse(""), reqHeaders, verb, url)
-              if (isVerified) forwardResult else (Failure(X509.X509PublicKeyCannotVerify), forwardResult._2)
-            case Failure(msg, t, c) => (Failure(msg, t, c), forwardResult._2) // PEM certificate is not valid
-            case _ => (Failure(X509.X509GeneralError), forwardResult._2) // PEM certificate cannot be validated
+              if (isVerified) Full(true) else Failure(X509.X509PublicKeyCannotVerify)
+            case Failure(msg, t, c) => Failure(msg, t, c) // PEM certificate is not valid
+            case _ => Failure(X509.X509GeneralError)// PEM certificate cannot be validated
           }
       }
     } else {
-      forwardResult
+      Full(true)
     }
-    
   }
   
   def forceVerifyRequestSignResponse(url: String): Boolean = {
@@ -211,10 +209,12 @@ object JwsUtil extends MdcLoggable {
     val criticalParams: util.Set[String] = new util.HashSet[String]()
     criticalParams.add("b64")
     criticalParams.addAll(getDeferredCriticalHeaders)
+    val x509CertChain: Base64 = new com.nimbusds.jose.util.Base64(CertificateUtil.x5c)
+    import java.util
     // Create and sign JWS
     val jwsProtectedHeader: JWSHeader = new JWSHeader.Builder(JWSAlgorithm.RS256)
       .base64URLEncodePayload(false)
-      .x509CertChain(List(new com.nimbusds.jose.util.Base64(CertificateUtil.x5c)).asJava)
+      .x509CertChain(util.Arrays.asList(x509CertChain))
       .criticalParams(criticalParams)
       .customParam("sigT", sigT)
       .customParam("sigD", JSONObjectUtils.parse(sigD))
@@ -228,12 +228,12 @@ object JwsUtil extends MdcLoggable {
     val isDetached = true
     val jws: String = jwsObject.serialize(isDetached)
 
-    List(HTTPParam("x-jws-signature", List(jws)), HTTPParam("digest", List(digest))) :: List(
+    List(HTTPParam("x-jws-signature", List(jws)), HTTPParam("digest", List(digest))) ::: List(
         HTTPParam("host", List(host)),
         HTTPParam("content-type", List(contentType)),
         HTTPParam("psu-ip-address", List(psuIpAddress.getOrElse("None"))),
-        HTTPParam("psu-geo-location", List(psuGeoLocation.getOrElse("None"))),
-      ) :: Nil
+        HTTPParam("psu-geo-location", List(psuGeoLocation.getOrElse("None")))
+      )
   }
 
   /**
