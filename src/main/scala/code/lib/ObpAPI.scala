@@ -3,25 +3,26 @@ package code.lib
 import java.io._
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.UUID.randomUUID
 
 import code.lib.ObpJson._
-import code.util.Helper
 import code.util.Helper.MdcLoggable
 import code.util.cache.Caching
+import code.util.{Helper, JwsUtil}
+import com.tesobe.CacheKeyFromArguments
 import net.liftweb.common.{Box, Failure, Full, _}
+import net.liftweb.http.provider.HTTPParam
 import net.liftweb.http.{RequestVar, S, SessionVar}
 import net.liftweb.json.JsonAST.{JBool, JValue}
 import net.liftweb.json.JsonDSL._
 import net.liftweb.json._
 import net.liftweb.util.Helpers.{intToTimeSpanBuilder => _, _}
 
-import scala.xml.NodeSeq
-import com.tesobe.CacheKeyFromArguments
+import scala.collection.immutable
 import scala.collection.immutable.{List, Nil}
 import scala.concurrent.duration._
 import scala.language.postfixOps
-import java.util.UUID.randomUUID
-import net.liftweb.common._
+import scala.xml.NodeSeq
 
 
 case class Header(key: String, value: String)
@@ -401,7 +402,7 @@ object OBPRequest extends MdcLoggable {
       val request = SSLHelper.getConnection(url) //blagh!
       request.setDoOutput(true)
       request.setRequestMethod(method)
-      request.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+      //request.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
       request.setRequestProperty("Accept", "application/json")
       request.setRequestProperty("Accept-Charset", "UTF-8")
 
@@ -409,6 +410,11 @@ object OBPRequest extends MdcLoggable {
       credentials.foreach(c => c.consumer.sign(request))
 
       headers.foreach(header => request.setRequestProperty(header.key, header.value))
+
+      // x-jws-signature and digest
+      val body = jsonBody.map(jValue => compact(render(jValue)))
+      val httpParams: immutable.Seq[HTTPParam] = JwsUtil.signRequest(body, method, apiPath, "application/json;charset=UTF-8")
+      httpParams.foreach(param => request.setRequestProperty(param.name, param.values.mkString(",")))
 
       //Set the request body
       if(jsonBody.isDefined) {
